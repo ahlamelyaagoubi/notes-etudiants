@@ -12,6 +12,7 @@ def test_health():
     reponse = client.get("/health")
     assert reponse.status_code == 200
     assert reponse.get_json()["status"] == "ok"
+    assert reponse.get_json()["version"] == "1.0"
 
 
 def test_liste_notes():
