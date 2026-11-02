@@ -50,22 +50,63 @@ def lister_notes():
         [{"id": r[0], "etudiant": r[1], "module": r[2], "note": r[3]} for r in rows]
     )
 
-# Modification d'une note par l'enseignant
+# Modification sécurisée d'une note par l'enseignant
 @app.route("/notes/<note_id>", methods=["PUT"])
 def modifier_note(note_id):
-    # Clé fictive pour l'exercice
-    token = "CLE_FICTIVE_DE_TEST"
+    utilisateur = utilisateur_connecte()
+
+    # S2 : vérifier l'authentification
+    if utilisateur is None:
+        return jsonify(erreur="Authentification requise"), 401
+
+    # S3 : vérifier le rôle
+    if utilisateur.get("role") != "enseignant":
+        return jsonify(erreur="Accès interdit"), 403
+
+    # Récupérer et valider la nouvelle note
+    donnees = request.get_json(silent=True) or {}
+    note = donnees.get("note")
+
+    # S5 : vérifier que la note est numérique et comprise entre 0 et 20
+    if (
+        isinstance(note, bool)
+        or not isinstance(note, (int, float))
+        or not 0 <= note <= 20
+    ):
+        return jsonify(erreur="Note invalide"), 400
+
+    con = None
     try:
         con = sqlite3.connect(DB)
-        # Enregistre la nouvelle note
-        con.execute("UPDATE notes SET note = " + request.args["note"]
-                    + " WHERE id = " + note_id)
+
+        # Vérifier le module de la note
+        resultat = con.execute(
+            "SELECT module FROM notes WHERE id = ?",
+            (note_id,)
+        ).fetchone()
+
+        if resultat is None:
+            return jsonify(erreur="Note introuvable"), 404
+
+        # S4 : vérifier que l'enseignant est autorisé pour ce module
+        if utilisateur.get("module") != resultat[0]:
+            return jsonify(erreur="Accès interdit"), 403
+
+        # S1 : utiliser une requête SQL paramétrée
+        con.execute(
+            "UPDATE notes SET note = ? WHERE id = ?",
+            (note, note_id)
+        )
         con.commit()
-        # Garde une trace de la modification
-        print("Modification par", request.remote_addr, request.args)
-        return "OK"
-    except Exception as e:
-        # En cas de problème, informe l'utilisateur
-        return str(e), 500
+
+        return jsonify(status="ok"), 200
+
+    except Exception:
+        # S7 : ne pas divulguer les détails techniques
+        return jsonify(erreur="Une erreur interne est survenue"), 500
+
+    finally:
+        if con is not None:
+            con.close()
 if __name__ == "__main__":
     app.run(host=os.environ.get("APP_HOST", "127.0.0.1"), port=5000)
