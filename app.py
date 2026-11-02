@@ -1,6 +1,7 @@
 import os
 import sqlite3
 from flask import Flask, jsonify, request
+from auth import utilisateur_connecte
 
 app = Flask(__name__)
 DB = "notes.db"
